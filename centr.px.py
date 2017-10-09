@@ -9,24 +9,27 @@ import matplotlib.pyplot as plt
 import numpy
 from matplotlib.backends.backend_pdf import PdfPages
 from os.path import isfile, isdir
-from math import ceil
+from math import ceil, cos
 from re import search
 
 ## A new and improved method to find coadds for a given RA/DEC
 ## inspired by the http://unwise.me code in github
-def getCoadds(template, indxtbl, r, d, box=10):
+def getCoadds(template, indxtbl, r, d, span=1.56):
     ## template is any coadd FITS object of the set to be queried
     ## This should work if all coadds evaluated have the same pixelscaling as
     ## template.
     result = []
     # TODO wrapping at 0, 360, 90, -90
+    boxsize = 2 
+    box = ((1 / cos((d / 360) * (2*numpy.pi)) * span) * boxsize,
+           span*boxsize*1.1)
     indx_subs =\
       indxtbl[1].data[numpy.bitwise_and(numpy.bitwise_and(
-                                          indxtbl[1].data['RA'] > r - box,
-                                          indxtbl[1].data['RA'] < r + box),
+                                          indxtbl[1].data['RA'] > r - box[0],
+                                          indxtbl[1].data['RA'] < r + box[0]),
                                         numpy.bitwise_and(
-                                          indxtbl[1].data['DEC'] < d + box,
-                                          indxtbl[1].data['DEC'] > d - box))]
+                                          indxtbl[1].data['DEC'] < d + box[1],
+                                          indxtbl[1].data['DEC'] > d - box[1]))]
     for record in indx_subs:
         template[0].header['CRVAL1'] = record[3]
         template[0].header['CRVAL2'] = record[4]
@@ -42,7 +45,7 @@ def getCoadds(template, indxtbl, r, d, box=10):
                                  'unwise-'+record[0]+'-w'+str(record[1])+\
                                  '-img-u.fits'])))
     return result
-
+ 
 ## Get the RA and DEC of candidate objects from the ALlWISE catalog. Requires
 ## the file 'objects',  containing all the target objects (simply 1 per line)
 ## to be present in the current path. The RA and DEC will be retrieved from the
