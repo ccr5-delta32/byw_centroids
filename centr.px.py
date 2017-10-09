@@ -12,6 +12,37 @@ from os.path import isfile, isdir
 from math import ceil
 from re import search
 
+## A new and improved method to find coadds for a given RA/DEC
+## inspired by the http://unwise.me code in github
+def getCoadds(template, indxtbl, r, d, box=10):
+    ## template is any coadd FITS object of the set to be queried
+    ## This should work if all coadds evaluated have the same pixelscaling as
+    ## template.
+    result = []
+    # TODO wrapping at 0, 360, 90, -90
+    indx_subs =\
+      indxtbl[1].data[numpy.bitwise_and(numpy.bitwise_and(
+                                          indxtbl[1].data['RA'] > r - box,
+                                          indxtbl[1].data['RA'] < r + box),
+                                        numpy.bitwise_and(
+                                          indxtbl[1].data['DEC'] < d + box,
+                                          indxtbl[1].data['DEC'] > d - box))]
+    for record in indx_subs:
+        template[0].header['CRVAL1'] = record[3]
+        template[0].header['CRVAL2'] = record[4]
+        w = wcs.WCS(template[0].header)
+        chk = w.wcs_world2pix(numpy.array([[r,d]]),0)
+        test = (True in numpy.isnan(chk), numpy.amax(chk) >= 2048,
+                numpy.amin(chk) < 0)
+        if sum(test) != 0:
+            continue
+        result.append((record,
+                       '/'.join(['e'+((3-len(str(record[2])))*'0')+\
+                                 str(record[2]),record[0][:3], record[0],
+                                 'unwise-'+record[0]+'-w'+str(record[1])+\
+                                 '-img-u.fits'])))
+    return result
+
 ## Get the RA and DEC of candidate objects from the ALlWISE catalog. Requires
 ## the file 'objects',  containing all the target objects (simply 1 per line)
 ## to be present in the current path. The RA and DEC will be retrieved from the
@@ -19,7 +50,7 @@ from re import search
 ## (obj_coord). If this file is already present in the current path this will
 ## not be done again.
 if not isfile('obj_coord'):
-    import astroquery
+    from astroquery.vizier import Vizier
     objects = open('objects', 'r').read().split('\n')[:-1]
     obj_coord = []
     for drawf in objects:
@@ -31,30 +62,15 @@ if not isfile('obj_coord'):
         for i in obj_coord:
             out.write('\t'.join([str(j) for j in i]) + '\n')
 
-## A function to get the records for the relevant coadds from
-## 'tr_neo2_index.fits'
-## TODO: this needs to be replaced because it cannot find coadds for every
-##       object yet ... considering the use of http://unwise.me instead.
-## A method that simply return a coadd for a given RA DEC will make the below a
-## lot less complicated
-def findCoadds(table, RA, DEC):
-    result = []
-    for i in table:
-        if i[3] >= (RA - 0.78) and i[3] <= (RA + 0.78) and i[4] >= (DEC - 0.78)\
-           and i[4] <= (DEC + 0.78):
-            result.append(i)
-    paths = [ '/'.join(['e'+((3-len(str(i[2])))*'0')+str(i[2]), i[0][:3], i[0],
-              'unwise-'+i[0]+'-w'+str(i[1])+'-img-u.fits']) for i in result ]
-    return (result, paths)
-
-## Open a list containing, for each object, how many pixels below, to the left,
-## above, and to the right of the pixel covering the RA and DEC of the object
-## retrieved from VizieR. I manually curated this list based on previous results
-## to improve the convergence of the 2-dimensional Gaussian centroid method.
-## By specifying a select number of pixels around the object noisy pixels and
-## other objects close-by have been removed.
-## If this file does not exist you can specify how many pixels will to included
-## on each side, for all objects (not tested yet!).
+## Open a list containing, for each object, the number of pixels below, to the
+## left, above, and to the right of the pixel covering the RA and DEC of the
+## object retrieved from VizieR should be included in all epochs. I manually
+## curated this list based on previous results to improve the convergence of the
+## 2-dimensional Gaussian centroid method. By specifying a select number of
+## pixels around the object noisy pixels and other objects close-by have been
+## removed.
+## If this file does not exist you can specify how many pixels will to
+## included on each side, for all objects (not tested yet!).
 if isfile('obj_px'):
     pix = [i.split('\t') for i in open('./obj_px').read().split('\n')[1:-1]]
 else:
@@ -67,25 +83,29 @@ result_hdr = ['ID', 'RA', 'DEC', 'path', 'coadd_id', 'epoch',
               'y_px_1dg', 'x_wcs_1dg', 'y_wcs_1dg', 'x_px_2dg', 'y_px_2dg',
               'x_wcs_2dg', 'y_wcs_2dg', 'MJDMIN','MJDMAX']
 results = [ [] for i in result_hdr]
+
 ## Open a pdf for writing images of the objects with the estimated centroids
 pdf = PdfPages('centroids.pdf')
+
 ## open a list of objects with their RA and DEC (see above)
 obj_coord = [i.split('\t') for i in open('obj_coord','r').\
                read().split('\n')[:-1]]
+
 ## common part of the URL
 url = 'https://faun.rc.fas.harvard.edu/ameisner/unwise/tr_neo2/'
+
 ## Open the coadd index table either from the server or, if available, from the
 ## current path
 if isfile('./tr_neo2_index.fits'):
     findex = fits.open('./tr_neo2_index.fits')
 else:
     findex = fits.open(url+'tr_neo2_index.fits', lazy_load_hdus=False)
-indxtbl = findex[1].data
 
-## At this stage I am failing to find coadds for some objects using the method
-## in the findCoadd function. Any objects for which no coadd is found are
-## written to the file below for later inspection
+## In case no coadd can be found for a given object it will be saved in this
 f = open('check_these_because_no_records', 'wb')
+
+## open any coadd below to use while finding coads for specific positions
+template = fits.open('./e000/074/0741m743/unwise-0741m743-w2-img-u.fits')
 
 ## Iterate over all objects and do stuff with them
 for I, obj in enumerate(obj_coord):
@@ -93,12 +113,12 @@ for I, obj in enumerate(obj_coord):
     atrimb = [1, -4000, 4000] # like wiseview: ['linear',clip_low,'trim_bright']
     marker= '+' # symbol used in the plots to indicate the computed centroid
     ms, mew = 20, 2
-    records = findCoadds(indxtbl, float(obj[1]), float(obj[2]))
+    records = getCoadds(template, findex, float(obj[1]), float(obj[2]))
     if len(records[0]) == 0:
         f.write('\t'.join(obj) + '\n')
         continue
-    w2 = [(records[1][i], str(j[2])) for i, j in enumerate(records[0]) if\
-          j[1]==2]
+    w2 = [(j[1], str(j[0][2])) for i, j in enumerate(records) if\
+          j[0][1]==2]
     fig, farr = plt.subplots(int(ceil(float(len(w2)) / 3 )), 3, sharex='col',
                              sharey='row' )
     farr = farr.reshape(len(farr)*3)
