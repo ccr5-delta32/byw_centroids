@@ -10,6 +10,7 @@ from os.path import isfile, isdir
 from re import search
 from astropy import wcs
 import numpy
+from math import cos
 
 
 url = 'https://faun.rc.fas.harvard.edu/ameisner/unwise/tr_neo2/'
@@ -44,23 +45,21 @@ else:
 
 ## A new and improved method to find coadds for a given RA/DEC
 ## inspired by the http://unwise.me code in github
-def getCoadds(template, indxtbl, r, d, box=10):
+def getCoadds(template, indxtbl, r, d, span=1.56):
     ## template is any coadd FITS object of the set to be queried
     ## This should work if all coadds evaluated have the same pixelscaling as
     ## template.
     result = []
-    # TODO wrapping at 0, 360, 90, -90
-    if d < -85 or d > 85:
-        box=30 ## close to the pole the box needs to bigger
+    boxsize = 2
+    box = ((1 / cos((d / 360) * (2*numpy.pi)) * span) * boxsize,
+           span*boxsize*1.1)
     indx_subs =\
       indxtbl[1].data[numpy.bitwise_and(numpy.bitwise_and(
-                                          indxtbl[1].data['RA'] > r - box,
-                                          indxtbl[1].data['RA'] < r + box),
+                                          indxtbl[1].data['RA'] > r - box[0],
+                                          indxtbl[1].data['RA'] < r + box[0]),
                                         numpy.bitwise_and(
-                                          indxtbl[1].data['DEC'] <\
-                                                  min(d + box, 90),
-                                          indxtbl[1].data['DEC'] >\
-                                                  max(d - box, -90)))]
+                                          indxtbl[1].data['DEC'] < d + box[1],
+                                          indxtbl[1].data['DEC'] > d - box[1]))]
     for record in indx_subs:
         template[0].header['CRVAL1'] = record[3]
         template[0].header['CRVAL2'] = record[4]
@@ -88,8 +87,7 @@ else:
 
 for obj in obj_coord:
     records = getCoadds(template, findex, float(obj[1]), float(obj[2]))
-    w2 = [(j[1], str(j[0][2])) for i, j in enumerate(records) if\
-          j[0][1]==2]
+    w2 = [(i[1], i[0][0]) for i in records if i[0][1] == 2]
     for path in w2:
         if isfile(path[0]):
             continue
@@ -99,11 +97,3 @@ for obj in obj_coord:
             if not isdir('/'.join(pth[:i+1])):
                 call(['mkdir', '/'.join(pth[:i+1])])
         coadd.writeto(path[0])
-
-## Get all the epochs covered by the target objects for determining the header
-## of the final table a priori
-lsd = [i for i in check_output(['ls', '-d', '*/'], shell=True).split('\n')[:-1]\
-       if search('e\d\d\d', i) ]
-with open('epochs_included' ,'wb') as out:
-    out.write('\n'.join(lsd) + '\n')
-

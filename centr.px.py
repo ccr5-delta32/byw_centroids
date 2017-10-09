@@ -19,8 +19,7 @@ def getCoadds(template, indxtbl, r, d, span=1.56):
     ## This should work if all coadds evaluated have the same pixelscaling as
     ## template.
     result = []
-    # TODO wrapping at 0, 360, 90, -90
-    boxsize = 2 
+    boxsize = 2
     box = ((1 / cos((d / 360) * (2*numpy.pi)) * span) * boxsize,
            span*boxsize*1.1)
     indx_subs =\
@@ -120,8 +119,7 @@ for I, obj in enumerate(obj_coord):
     if len(records[0]) == 0:
         f.write('\t'.join(obj) + '\n')
         continue
-    w2 = [(j[1], str(j[0][2])) for i, j in enumerate(records) if\
-          j[0][1]==2]
+    w2 = [(i[1], i[0][0]) for i in records if i[0][1] == 2]
     fig, farr = plt.subplots(int(ceil(float(len(w2)) / 3 )), 3, sharex='col',
                              sharey='row' )
     farr = farr.reshape(len(farr)*3)
@@ -165,7 +163,7 @@ for I, obj in enumerate(obj_coord):
         results[0].append(obj[0])
         results[1].append(obj[1])
         results[2].append(obj[2])
-        results[3].append(records[0][0][0])
+        results[3].append(path[1])
         results[4].append('/'.join(path[0].split('/')[:-1]))
         results[5].append(path[0].split('/')[0])
         results[6].append(croids[0]+objpx[0]+int(pix[I][2]))
@@ -204,7 +202,7 @@ final_hdr = ['ID', 'RA', 'DEC', 'coadd_id'] +\
                                  '_MJDMIN', '_MJDMAX'][j] for j in
                            range(6)] for i in unipoch])))))
 ## An array for the sorted-out data
-final = numpy.empty([len(final_hdr), len(obj_coord)],
+final = numpy.empty([len(final_hdr), len(set(results[3]))],
                     dtype=[ (j, 'O') if i in [0, 3] else (j, 'float64') for i, j
                            in enumerate(final_hdr) ])
 final[:] = numpy.NaN
@@ -212,22 +210,20 @@ final[:] = numpy.NaN
 ## Process the intermediate results and populate the final table
 ## Inspection of the pdf shows that the centroid_2dg is most robust so only this
 ## is included
-for I, obj in enumerate(obj_coord):
+for I, coadd in enumerate(set(results[3])):
     res = [numpy.nan for i in range(len(final_hdr))]
-    res[0] = obj[0]
-    res[1:3] = [float(i) for i in obj[1:]]
     dresult = [[ k[i] for k in results ] for i in range(len(results[0])) if
-               results[0][i] == obj[0] ]
-    if len(dresult) == 0: 
-        res[3] = None
-        final[0][I] = tuple(res)
-        continue
+               results[3][i] == coadd ]
+    res[0] = dresult[0][0]
+    res[1:3] = [float(i) for i in dresult[0][1:3]]
     res[3] = dresult[0][3]
     for d in dresult:
         hdr_indx = [i for i in range(len(final_hdr)) if\
                     search(d[5],final_hdr[i])]
         res[hdr_indx[0]:hdr_indx[-1]+1] = d[-6:]
     final[0][I] = tuple(res)
+
+srt = numpy.argsort(final)
 
 ## Write final table
 with open('centroids.2dg', 'wb') as out:
