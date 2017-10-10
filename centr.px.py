@@ -12,8 +12,10 @@ from os.path import isfile, isdir
 from math import ceil, cos
 from re import search
 
-## A new and improved method to find coadds for a given RA/DEC
-## inspired by the http://unwise.me code in github
+## common part of the URL
+url = 'https://faun.rc.fas.harvard.edu/ameisner/unwise/tr_neo2/'
+
+## A function to find coadds for a given RA/DEC
 def getCoadds(template, indxtbl, r, d, span=1.56):
     ## template is any coadd FITS object of the set to be queried
     ## This should work if all coadds evaluated have the same pixelscaling as
@@ -45,8 +47,8 @@ def getCoadds(template, indxtbl, r, d, span=1.56):
                                  '-img-u.fits'])))
     return result
  
-## Get the RA and DEC of candidate objects from the ALlWISE catalog. Requires
-## the file 'objects',  containing all the target objects (simply 1 per line)
+## Get the RA and DEC of candidate objects from the AllWISE catalog. Requires
+## the file 'objects',  containing all the target object ID's (simply 1 per line)
 ## to be present in the current path. The RA and DEC will be retrieved from the
 ## AllWISE catalog on VizieR and a new file will be written with these included
 ## (obj_coord). If this file is already present in the current path this will
@@ -93,9 +95,6 @@ pdf = PdfPages('centroids.pdf')
 obj_coord = [i.split('\t') for i in open('obj_coord','r').\
                read().split('\n')[:-1]]
 
-## common part of the URL
-url = 'https://faun.rc.fas.harvard.edu/ameisner/unwise/tr_neo2/'
-
 ## Open the coadd index table either from the server or, if available, from the
 ## current path
 if isfile('./tr_neo2_index.fits'):
@@ -113,8 +112,8 @@ template = fits.open('./e000/074/0741m743/unwise-0741m743-w2-img-u.fits')
 for I, obj in enumerate(obj_coord):
     print str(I) + ': ' + obj[0]
     atrimb = [1, -4000, 4000] # like wiseview: ['linear',clip_low,'trim_bright']
-    marker= '+' # symbol used in the plots to indicate the computed centroid
-    ms, mew = 20, 2
+    marker= ('+', 'x') #symbols used in the plots for centroids
+    ms, mew = 10,1.5
     records = getCoadds(template, findex, float(obj[1]), float(obj[2]))
     if len(records[0]) == 0:
         f.write('\t'.join(obj) + '\n')
@@ -124,7 +123,7 @@ for I, obj in enumerate(obj_coord):
                              sharey='row' )
     farr = farr.reshape(len(farr)*3)
     [i.set_xlim([-1, sum([int(pix[I][2]), int(pix[I][4]), 1])]) for i in farr]
-    [i.set_ylim([0, sum([int(pix[I][1]), int(pix[I][3])])]) for i in farr]
+    [i.set_ylim([-1, sum([int(pix[I][1]), int(pix[I][3])], 1)]) for i in farr]
     for i, path in enumerate(w2):
         if isfile(path[0]):
             coadd = fits.open(path[0])
@@ -145,11 +144,11 @@ for I, obj in enumerate(obj_coord):
         croids = centroid_com(fov) # center of mass from 2D image moments
         croids = numpy.append(croids, centroid_1dg(fov)) # 1D Gaussians fit to the marginal x and y
         croids = numpy.append(croids, centroid_2dg(fov)) # 2D Gaussian fitted to the 2D distribution
-        farr[i].plot(croids[0], croids[1], color='#00aa00', marker=marker,
+        farr[i].plot(croids[0], croids[1], color='#00aa00', marker=marker[0],
                 ms=ms, mew=mew)
-        farr[i].plot(croids[2], croids[3], color='#0000ff', marker=marker,
+        farr[i].plot(croids[2], croids[3], color='#0000ff', marker=marker[0],
                 ms=ms, mew=mew)
-        farr[i].plot(croids[4], croids[5], color='#00cccc', marker=marker,
+        farr[i].plot(croids[4], croids[5], color='#00cccc', marker=marker[1],
                 ms=ms, mew=mew)
         wcs_com =\
         w.wcs_pix2world(numpy.array([[objpx[0]-int(pix[I][2])+croids[0],
