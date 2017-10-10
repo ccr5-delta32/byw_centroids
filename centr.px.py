@@ -223,10 +223,8 @@ for I, coadd in enumerate(set(results[3])):
         res[hdr_indx[0]:hdr_indx[-1]+1] = d[-6:]
     final[0][I] = tuple(res)
 
-srt = numpy.argsort(final)
-
 ## Write final table
 with open('centroids.2dg', 'wb') as out:
     out.write('\t'.join(final_hdr) + '\n')
-    for row in final[0]:
+    for row in numpy.sort(final,order='ID')[0]:
         out.write('\t'.join([str(i) for i in row]) + '\n')
