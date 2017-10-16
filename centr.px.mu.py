@@ -83,9 +83,9 @@ else:
 
 ## A list of lists to which all the intermediate results are appended
 result_hdr = ['ID', 'RA', 'DEC', 'path', 'coadd_id', 'epoch',
-              'x_px_com', 'y_px_com', 'x_wcs_com', 'y_wcs_com', 'x_px_1dg',
-              'y_px_1dg', 'x_wcs_1dg', 'y_wcs_1dg', 'x_px_2dg', 'y_px_2dg',
-              'x_wcs_2dg', 'y_wcs_2dg', 'MJDMIN','MJDMAX']
+              'x_px_2dg', 'y_px_2dg', 'x_wcs_2dg', 'y_wcs_2dg', 'MJDMIN',
+              'MJDMAX', 'prehib_x_px', 'prehib_y_px', 'prehib_x_wcs',
+              'prehib_y_wcs', 'MJD1', 'MJD2']
 results = [ [] for i in result_hdr]
 
 ## Open a pdf for writing images of the objects with the estimated centroids
@@ -111,7 +111,6 @@ template = fits.open('./e000/074/0741m743/unwise-0741m743-w2-img-u.fits')
 ## Iterate over all objects and do stuff with them
 for I, obj in enumerate(obj_coord):
     print str(I) + ': ' + obj[0]
-    atrimb = [1, -4000, 4000] # like wiseview: ['linear',clip_low,'trim_bright']
     marker= ('+', 'x') #symbols used in the plots for centroids
     ms, mew = 10,1.5
     records = getCoadds(template, findex, float(obj[1]), float(obj[2]))
@@ -124,6 +123,9 @@ for I, obj in enumerate(obj_coord):
     farr = farr.reshape(len(farr)*3)
     [i.set_xlim([-1, sum([int(pix[I][2]), int(pix[I][4]), 1])]) for i in farr]
     [i.set_ylim([-1, sum([int(pix[I][1]), int(pix[I][3])], 1)]) for i in farr]
+
+    # Get coadds and keep a small subsection
+    fovs = []
     for i, path in enumerate(w2):
         if isfile(path[0]):
             coadd = fits.open(path[0])
@@ -135,12 +137,14 @@ for I, obj in enumerate(obj_coord):
                                                float(obj[2])]]), 0)[0]]
         fov = coadd[0].data[objpx[1]-int(pix[I][1]):objpx[1]+int(pix[I][3])+1,
                             objpx[0]-int(pix[I][2]):objpx[0]+int(pix[I][4])+1]
-        fov = numpy.clip(fov, atrimb[1], atrimb[2])
         farr[i].imshow(fov, origin='lower', interpolation='nearest',
-                       cmap='Greys', norm=vis.mpl_normalize.\
-                       ImageNormalize(stretch = vis.AsinhStretch(atrimb[0])))
+                       cmap='Greys')
         farr[i].set_title(' | '.join([obj[0], path[0].split('/')[0],
                                      path[0].split('/')[-1]]), fontsize=4)
+        fov.append(fov)
+    
+    # estimate centroids using all epochs
+    for fov in fovs:
         croids = centroid_com(fov) # center of mass from 2D image moments
         croids = numpy.append(croids, centroid_1dg(fov)) # 1D Gaussians fit to the marginal x and y
         croids = numpy.append(croids, centroid_2dg(fov)) # 2D Gaussian fitted to the 2D distribution
@@ -179,6 +183,9 @@ for I, obj in enumerate(obj_coord):
         results[17].append(wcs_2dg[0][1])
         results[18].append(coadd[0].header[-1])
         results[19].append(coadd[0].header[-2])
+    # estimate centroids in data pre and post hibernation summed, respectively
+    ## code here
+
     plt.suptitle(obj[0] + ' | RA=' + obj[1] + ', DEC=' + obj[2])
     pdf.savefig()
     plt.close('all')
