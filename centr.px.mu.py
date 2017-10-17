@@ -78,7 +78,7 @@ obj_coord = [i.split('\t') for i in open('obj_coord','r').\
 ## pixels around the object noisy pixels and other objects close-by have been
 ## removed.
 ## If this file does not exist you can specify how many pixels will to
-## included on each side, for all objects (not tested yet!).
+## included on each side, for all objects.
 if isfile('obj_px'):
     pix = [i.split('\t') for i in open('./obj_px').read().split('\n')[1:-1]]
 else:
@@ -113,7 +113,7 @@ template = fits.open(url + 'e000/074/0741m743/unwise-0741m743-w2-img-u.fits')
 hibmjd = 55609.8333333333
 
 ## Prepare some subsections of the data and get the MJD while we are at it
-def fovAndMJD(w2, ipix):
+def processCoadd(w2, ipix):
     fovs = []
     MJD = []
     for i, path in enumerate(w2):
@@ -128,7 +128,7 @@ def fovAndMJD(w2, ipix):
 
         fov = coadd[0].data[objpx[1]-int(ipix[1]):objpx[1]+int(ipix[3])+1,
                             objpx[0]-int(ipix[2]):objpx[0]+int(ipix[4])+1]
-        ## Add them to the plots 
+        ## Add them to the plots
         farr[i].imshow(fov, origin='lower', interpolation='nearest',
                        cmap='Greys')
         farr[i].set_title(' | '.join([obj[0], path[0].split('/')[0],
@@ -162,13 +162,13 @@ for I, obj in enumerate(obj_coord):
     [i.set_ylim([-1, sum([int(pix[I][1]), int(pix[I][3])], 1)]) for i in farr]
 
     # Get coadds and keep a small subsection, and get the MJD of the coadds
-    fovandmjd = fovAndMJD(w2, pix[I])
+    fovandmjd = processCoadd(w2, pix[I])
     objpx = fovandmjd[2]
     w = fovandmjd[3]
     
     # estimate centroids using all epochs
     for J, fov in enumerate(fovandmjd[0]):
-        croids = centroid_2dg(fov) # center of mass from 2D image moments
+        croids = centroid_2dg(fov) # 2D Gaussian fitted to the data
         farr[J].plot(croids[0], croids[1], color='#00cccc', marker=marker[1],
                 ms=ms, mew=mew)
         wcs_2dg =\
@@ -196,7 +196,7 @@ for I, obj in enumerate(obj_coord):
     farr.set_ylim([-1, sum([int(pix[I][1]), int(pix[I][3]), 1])])
 
     ## Add all pixel intensities from pre-hibernation epochs and add to the plot
-    prefov = addArrays(fovandmjd[0][np.amax(fovandmjd[1], 1) <= hibmjd]) 
+    prefov = addArrays(fovandmjd[0][np.amax(fovandmjd[1], 1) <= hibmjd])
     farr.imshow(prefov, origin='lower', interpolation='nearest', cmap='Greys')
     ## estimate centroid
     pre_croids = centroid_2dg(prefov)
